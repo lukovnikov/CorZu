@@ -6,7 +6,7 @@ Perform string matching (we do it here, not in the coreference resolver)
 Example usage: python extract_mables_from_conll.py examples/parsed.conll > examples/markables.txt
 """
 
-import os,re,sys,pdb,cPickle,operator,copy
+import os,re,sys,pdb,operator,copy
 from collections import defaultdict
 from get_subcat_frame import *
 
@@ -18,20 +18,20 @@ real_preprocessing=True                                 #switch for gold morphol
 corzu_dir = os.path.dirname(os.path.realpath(__file__))
 
 """ functions """
-def nn_str_matching(ante,anaph):    
+def nn_str_matching(ante,anaph, determiners):
     """ string matching for common nouns; return True/False """
     if len(anaph[-3])==1: return 0                      #don't resolve bare NPs
     #if ante[1]==anaph[1] or anaph[1]-ante[1]>10: return 0                      #not in the same sentence, not more than 10 sentences away
     if ante[6]!=anaph[6]: return 0                      #morph match: gender
     if ante[7]!=anaph[7]: return 0                      #morph match: number
     #if len(ante[-3])==1 and len(anaph[-3])==1 and ante[7]=='PL' and ante[9]==anaph[9]: return 1    # allow plural NPs of length one to match; no substring match
-    #if len(ante[-3])==1 and len(anaph[-3])==1: return 1    #no modifier in anaphor and antecedent: ok, plurals mostly, might be tricky though...    
-    #if len(ante[-3])>1 and ante[-3][0].startswith('all'): return 0  
+    #if len(ante[-3])==1 and len(anaph[-3])==1: return 1    #no modifier in anaphor and antecedent: ok, plurals mostly, might be tricky though...
+    #if len(ante[-3])>1 and ante[-3][0].startswith('all'): return 0
     if len(anaph[-3])>1 and anaph[-3][0].lower().startswith('all'): return 0    #all-quantified NPs can't be anaphoric
     if len(anaph[-3])>1 and anaph[-3][0].lower().startswith('ein'): return 0    #indefinite NPs can't be anaphoric
     if len(anaph[-3])>1 and anaph[-3][0].lower().startswith('ander'): return 0    #indefinite NPs can't be anaphoric
     if ante[-3][0].lower().startswith('kein') or anaph[-3][0].lower().startswith('kein'): return 0 #negative quantification
-    #if ante[-3][0].lower().startswith('einig') or anaph[-3][0].lower().startswith('einig'): return 0 #fuzzy quantification        
+    #if ante[-3][0].lower().startswith('einig') or anaph[-3][0].lower().startswith('einig'): return 0 #fuzzy quantification
     #if ante[-3][0].lower().startswith('manche') or anaph[-3][0].lower().startswith('manche'): return 0 #fuzzy quantification
     if ante[-3]==anaph[-3]: return 1                    #full match
 
@@ -50,9 +50,9 @@ def nn_str_matching(ante,anaph):
             if ante[9]==ante[-3][-1] and anaph[9]==anaph[-3][-1]:    #matches are the head, i.e. at end of string, no postmodifiers
                 #explicitly allow "ein.* .. NN" -> "die.* .. NN" pattern, disregarding modifiers -> too lax? #TODO: Sentence distance limit?
                 if determiners[ante[1],ante[2]].startswith('ein') and re.match('[DdZz](er|ie.*|as|em|es|u.*)|[Bb]eide.*',determiners[anaph[1],anaph[2]]):
-                    return 1     
+                    return 1
                 if determiners[ante[1],ante[2]].startswith('dies') and re.match('[DdZz](er|ie.*|as|em|es|u.*)|[Bb]eide.*',determiners[anaph[1],anaph[2]]):
-                    return 1                         
+                    return 1
                 #ante is modified; everything between determiner and head matches, i.e. everything in the anaph str is in the ante str
                 if len(ante[-3])>2 and [x for x in anaph[-3][1:] if not x==anaph[9] and not x in ante[-3][1:]]==[]:
                     return 1
@@ -61,7 +61,7 @@ def nn_str_matching(ante,anaph):
                 pdb.set_trace()
                 return 0
             """
-            
+
         #if the ante head is not the end of the string (i.e. there are postmodifiers), at least ~60% of the anaph tokens must overlap
         else:
             if len(ante[-3]) > 1:
@@ -74,23 +74,23 @@ def nn_str_matching(ante,anaph):
                 if (anaph[1],anaph[2]) in determiners and not determiners[anaph[1],anaph[2]]=='*':
                     anaph_str=anaph[-3][1:]
                 else:
-                    anaph_str=anaph[-3]      
+                    anaph_str=anaph[-3]
             else: anaph_str = anaph[-3]
             #60% of the mentions in must be shared; TODO: reduce this to ADJD, ADJA, NE, NN? Match numbers
             if len([x for x in anaph_str if not x==anaph[9] and x in ante_str])/float(len(anaph_str))>.6 or len([x for x in ante_str if not x==ante[9] and x in anaph_str])/float(len(ante_str))>.6:
                 return 1
-                
+
         #ante is modified, anaph isn't
         if (anaph[1],anaph[2]) in determiners and not determiners[anaph[1],anaph[2]]=='*' and not determiners[anaph[1],anaph[2]]=='CARD':  #remove determiners
             anaph_str=anaph[-3][1:]
         else:
-            anaph_str=anaph[-3]  
-        if len(anaph_str)==1: 
-            return 1      
+            anaph_str=anaph[-3]
+        if len(anaph_str)==1:
+            return 1
 
-def str_match(mables):
+def str_match(mables, nominal_mods, determiners):
     """ string matching for nouns; return a list of lists containig string matching noun markables """
-    orig_mables=copy.deepcopy(mables)    
+    orig_mables=copy.deepcopy(mables)
     matches=[]
     while not mables==[]:
         mable=mables[0]                                     #first markable in markables
@@ -102,7 +102,7 @@ def str_match(mables):
             for np in mables:
                 if np[0]>mable[0] and np[9]==mable[9] and np[4]=='NE':
                     """
-                    if not np[6]==mable[6] or not np[7]==mable[7]: 
+                    if not np[6]==mable[6] or not np[7]==mable[7]:
                         if [x for x in np[6:8] if x=='*']==[] and [x for x in mable[6:8] if x=='*']==[]:
                             pdb.set_trace()
                     """
@@ -130,54 +130,54 @@ def str_match(mables):
                         if np[4]=='NN' and np[1]>mable[1] and n.lower().endswith(np[9].lower()) and mable[7]==np[7]:  #EU-Umwelkommissarin -> Kommissarin
                             if (np[1],np[2]) in determiners and not determiners[np[1],np[2]] in ['eine','ein','*']:
                                 match.append(np)
-                    
+
         elif mable[4]=='NN':                                #common noun, require more specific matching
             for np in mables:
                 #if np[0]<mable[0]: #use this with reversed order
                 if np[0]>mable[0]:
- 
-                    if np[9]==mable[9] and nn_str_matching(mable,np):
-                        match.append(np)  
-                               
-                    #Partial Matching, de-hyphenate                        
-                    elif len(np[9])<len(mable[9]) and '-' in mable[9] and re.sub('.*-','',mable[9]).lower().endswith(np[9].lower()) and nn_str_matching(mable,np):
-                        match.append(np)                                 
-                    elif len(np[9])>len(mable[9]) and '-' in np[9] and re.sub('.*-','',np[9]).lower().endswith(mable[9].lower()) and nn_str_matching(mable,np):
-                        match.append(np)                        
-                    #Look for matching nominal modifiers 
+
+                    if np[9]==mable[9] and nn_str_matching(mable,np, determiners):
+                        match.append(np)
+
+                    #Partial Matching, de-hyphenate
+                    elif len(np[9])<len(mable[9]) and '-' in mable[9] and re.sub('.*-','',mable[9]).lower().endswith(np[9].lower()) and nn_str_matching(mable,np,determiners):
+                        match.append(np)
+                    elif len(np[9])>len(mable[9]) and '-' in np[9] and re.sub('.*-','',np[9]).lower().endswith(mable[9].lower()) and nn_str_matching(mable,np,determiners):
+                        match.append(np)
+                    #Look for matching nominal modifiers
                     elif (mable[1],mable[2]) in nominal_mods and np[9].isupper() and np[4] in ['NE','NN']:
                         for n in nominal_mods[mable[1],mable[2]]:
                             if n.lower().endswith(np[9].lower()) or np[9].lower().endswith(n.lower()):   #EU-Umwelkommissarin -> Kommissarin
                                 if (np[1],np[2]) in determiners:
                                     if determiners[np[1],np[2]] not in ['ein','eine']:
-                                        match.append(np)  
+                                        match.append(np)
                                         break
                                 else:
-                                    match.append(np)     
+                                    match.append(np)
                                     break
 
-                    #TODO: only when one of them is decompoundable; i.e. not Umwelt, but Hauptpumpwerk <-> Pumpwerk                                            
-                    """                        
+                    #TODO: only when one of them is decompoundable; i.e. not Umwelt, but Hauptpumpwerk <-> Pumpwerk
+                    """
                     #Partial Matching, string share same ending. Problem: Umwelt <-> Welt; too fuzzy
                     elif len(np[9])<len(mable[9]) and mable[9].lower().endswith(np[9].lower()) and nn_str_matching(mable,np):
-                        match.append(np)                         
+                        match.append(np)
                     elif len(np[9])>len(mable[9]) and np[9].lower().endswith(mable[9].lower()) and nn_str_matching(mable,np):
-                        match.append(np)  
-                    """                        
-                    
+                        match.append(np)
+                    """
+
                     #TODO: if mable[9] is all uppercase, assume abbreviation, look for decompoundable noun
                     # VS = Verfassungs-Schutz = Verfassungsschutz
                     """
                     elif mable[9].isupper() and np[9].startswith(mable[9][0]):
                         decomp=compsplit.split_compound(np[0])
-                        try: 
+                        try:
                             next([x for x in if x[0]>0 and x[2].startswith(mable[9][-1])])  # Schutz
                             match.append(np)
                         except StopIteration:
-                            pass                        
-                    """     
-                               
-            #Demonstrative common noun NPs                                
+                            pass
+                    """
+
+            #Demonstrative common noun NPs
             if match==[] and (mable[1],mable[2]) in determiners and determiners[mable[1],mable[2]].startswith('dies'):
                 try:
                     #ante=next(m for m in reversed(orig_mables) if m[1]<mable[1] and m[9]==mable[9] and mable[1]-m[1]<4)
@@ -189,17 +189,17 @@ def str_match(mables):
                     except StopIteration:
                         matches.append([ante,mable])    #add new cset
                 except StopIteration:
-                    pass                                      
-                        
+                    pass
+
         if len(match)>0:                                    #we have matches
             match.insert(0,mable)                           #insert the markable at the beginning of the match list
-            for np in match: 
+            for np in match:
                 if np in mables:                            #very rare case where nominal descriptor and NE have the same head lemma: Der Richter Klaus Richter
                     mables.remove(np)                       #remove the matched markables, don't process them again
             match.sort()
             matches.append(match)
-        else: 
-            mables.remove(mable)                            #remove processed markable if no matches are found        
+        else:
+            mables.remove(mable)                            #remove processed markable if no matches are found
     return matches
 
 
@@ -213,7 +213,7 @@ if real_preprocessing:  #Parzu parsed file
             morph_in=tok[5].split('|')
             morph.append(morph_in[0])                       #gender
             morph.append(morph_in[2])                       #number
-        elif tok[4]=='PPOSAT':                              #manually set morphology of possessive pronouns as their morph. match their heads                            
+        elif tok[4]=='PPOSAT':                              #manually set morphology of possessive pronouns as their morph. match their heads
             if re.match('mein.*',tok[2].lower()): morph=[1,'*','Sg']
             elif re.match('uns.*',tok[2].lower()): morph=[1,'*','Pl']
             elif re.match('dein.*',tok[2].lower()): morph=[2,'*','Sg']
@@ -245,14 +245,14 @@ else:   #tuebadz extracted conll file
             morph.append(re.search('(.)$',tok[5]).group(1))  #genus
             morph.append(re.search('(.).$',tok[5]).group(1))  #number
         elif tok[4]=='PRF': morph=[3,'*','*']
-        elif tok[4]=='PPOSAT':                            
+        elif tok[4]=='PPOSAT':
             if re.match('mein.*',tok[2].lower()): morph=[1,'*','s']
             elif re.match('uns.*',tok[2].lower()): morph=[1,'*','p']
             elif re.match('dein.*',tok[2].lower()): morph=[2,'*','s']
             elif re.match('euer.*',tok[2].lower()): morph=[2,'*','p']
             elif re.match('sein.*',tok[2].lower()): morph=[3,'*','s']
             elif re.match('ihr.*',tok[2].lower()): morph=[3,'*','*']
-            else: morph=[3,'*','*']            
+            else: morph=[3,'*','*']
         elif tok[4]=='PPER':
             if tok[2]=='es': morph=[3,'n','s']
             else:
@@ -273,17 +273,17 @@ def get_extension(head,token,sent,ext):
                 return ext
             if not m[1]=='"' and not m[4].startswith('V') and not m[4]=='KON':
                 ext.append(m)
-            get_extension(head,m,sent,ext)        
+            get_extension(head,m,sent,ext)
             """
             if m[7]=='kon' and not m[0]=='1':   #only allow coordination at sentence beginning
                 get_extension(m,sent,ext)
-            elif m[4].startswith('V'): 
+            elif m[4].startswith('V'):
                 get_extension(m,sent,ext)
-            else: 
+            else:
                 if not m[1]=='"': #and not m[4]=='ADV':   #TODO:allow APPR? Test what works better
                     ext.append(m)
                 get_extension(m,sent,ext)
-            """                
+            """
     return ext
 
 
@@ -293,56 +293,54 @@ haben={}
 gmods={}
 preds={}
 
-""" main """
-#we process line by line, aggregate all tokens of a sentence and then extract the markables
-sentence=[]                                             #list to which tokens from a sentence are appended to
-mables=[]                                               #list of extracted markables
-sent_nr=1                                               #sentence counter
 
-"""
-path=os.path.dirname(sys.argv[0])
-if path.startswith('..'):
-    path+='/'
-elif not path=='':
-    path='/'+path
-person=eval(open(path+'data/mensch.txt','r').read())  #Person descriptions extracted from Germanet 7 nomen.Mensch.xml
-male_names=eval(open(path+'data/male_names.txt','r').read())      #male first names, used for gender disambiguation of named entities
-female_names=eval(open(path+'data/female_names.txt','r').read())  #female first names
-"""
+def get_mables(lines):
+    """ main """
+    #we process line by line, aggregate all tokens of a sentence and then extract the markables
+    sentence=[]                                             #list to which tokens from a sentence are appended to
+    mables=[]                                               #list of extracted markables
+    sent_nr=1                                               #sentence counter
 
-if os.path.isfile(corzu_dir + os.sep + 'mensch.txt'): person=eval(open(corzu_dir + os.sep + 'mensch.txt','r').read())  #Person descriptions extracted from Germanet 7 nomen.Mensch.xml
-else: 
-    print >> sys.stderr,'Not using mensch.txt; consider using it for improved pronoun resolution performance (see README).'
-    person=[]
-male_names=eval(open(corzu_dir + os.sep + 'male_names.txt','r').read())      #male first names, used for gender disambiguation of named entities
-female_names=eval(open(corzu_dir + os.sep + 'female_names.txt','r').read())  #female first names
+    """
+    path=os.path.dirname(sys.argv[0])
+    if path.startswith('..'):
+        path+='/'
+    elif not path=='':
+        path='/'+path
+    person=eval(open(path+'data/mensch.txt','r').read())  #Person descriptions extracted from Germanet 7 nomen.Mensch.xml
+    male_names=eval(open(path+'data/male_names.txt','r').read())      #male first names, used for gender disambiguation of named entities
+    female_names=eval(open(path+'data/female_names.txt','r').read())  #female first names
+    """
 
-doc_counter=0
+    if os.path.isfile(corzu_dir + os.sep + 'mensch.txt'): person=eval(open(corzu_dir + os.sep + 'mensch.txt','r').read())  #Person descriptions extracted from Germanet 7 nomen.Mensch.xml
+    else:
+        print >> sys.stderr,'Not using mensch.txt; consider using it for improved pronoun resolution performance (see README).'
+        person=[]
+    male_names=eval(open(corzu_dir + os.sep + 'male_names.txt','r').read())      #male first names, used for gender disambiguation of named entities
+    female_names=eval(open(corzu_dir + os.sep + 'female_names.txt','r').read())  #female first names
 
-sentences={}
-sentence=[]
-mables=[]
-koords=[]
-coref={}
-aggr=[]
-prepositions={}
-pposat_heads={}
-nominal_mods=defaultdict(list)
-verbs=defaultdict(dict)
-all_verbs={}
-preds={}
-haben={}
-gmods={}
-determiners={}
+    doc_counter=0
 
-for line in open(sys.argv[1],'r').readlines():
-    if re.match("\d+", line.strip().split("\t")[0]):    # should match only real lines
-        linetoapp = line.strip().split("\t")
-        prevlinenumber = int(sentence[-1][0]) if len(sentence) > 0 else 0
-        linenumber = int(linetoapp[0])
-        if linenumber <= prevlinenumber:                # current line is start of next sentence
-            assert(linenumber == 1)
-            # finalize sentence based on currently added lines
+    sentences={}
+    sentence=[]
+    mables=[]
+    koords=[]
+    coref={}
+    aggr=[]
+    prepositions={}
+    pposat_heads={}
+    nominal_mods=defaultdict(list)
+    verbs=defaultdict(dict)
+    all_verbs={}
+    preds={}
+    haben={}
+    gmods={}
+    determiners={}
+
+    for line in lines:  #open(sys.argv[1],'r').readlines():
+        line = line.strip()
+        if len(line) == 0 or line=='\n' or line=='\t\t\t\t\t\t\t\t\t\n':    #newline is sentence boundary, start processing the aggregated sentence
+
             if not sentence==[]:
                 sentences[str(sent_nr)]=sentence
             for tok in sentence:
@@ -429,7 +427,7 @@ for line in open(sys.argv[1],'r').readlines():
 
                 elif tok[4] in ['NN','NE']:                 #nouns
                     """
-                    Apposition handling: 
+                    Apposition handling:
                     1. if the preceding markable is a named entity, shift the head to the current token
                     [Lothar] Koring -> Lothar [Koring]
                     2. if the preceding markable is an apposition, shift the head to the current token
@@ -462,22 +460,22 @@ for line in open(sys.argv[1],'r').readlines():
                             if tok[4]=='NE':    #Die Kanzlerin, Angela Merkel
                                 if tok[-2] in ['PER','ORG']:    #or only !='LOC' ?
                                     if head_mable[3]=='NN': #store the nominal descriptor: Die [Kanzlerin], Angela Merkel, ... as we override it below
-                                        nominal_mods[tuple(head_mable[:2])].append(head_mable[8]) 
+                                        nominal_mods[tuple(head_mable[:2])].append(head_mable[8])
                                     if head_mable[-1]=='PER' and not tok[-2]=='PER':    #Otto Schily (SPD) -> don't shift head to SPD
                                         pass
-                                    else:                                                                
+                                    else:
                                         head_mable[8]=tok[2]            #shift the head lemma
-                                        head_mable[3]=tok[4]            #override PoS-tag        
+                                        head_mable[3]=tok[4]            #override PoS-tag
                                         head_mable[-1]=tok[-2]          #NE tag
                                         if real_preprocessing==False:
-                                            if not tok[5][-1]=='*' and head_mable[5]=='*' and tok[5][1]==head_mable[6]:   #gender match?                                 
+                                            if not tok[5][-1]=='*' and head_mable[5]=='*' and tok[5][1]==head_mable[6]:   #gender match?
                                                 head_mable[5]=tok[5][-1]
-                                        
-                                
+
+
                             elif tok[4]=='NN' and head_mable[3]=='NE' and head_mable[-1] in ['PER','ORG']:    #Angela Merkel, die Kanzlerin
-                                nominal_mods[tuple(head_mable[:2])].append(tok[2])  #store the nominal descriptor: Angela Merkel, die [Kanzlerin], ...   
-    
-    
+                                nominal_mods[tuple(head_mable[:2])].append(tok[2])  #store the nominal descriptor: Angela Merkel, die [Kanzlerin], ...
+
+
                             elif tok[4]=='NN' and head_mable[3]=='NN' and tok[2].isupper() and int(tok[0])<len(sentence) and sentence[int(tok[0])][1]==')':   # Umweltministerium (BMU)
                                 nominal_mods[tuple(head_mable[:2])].append(tok[2])
                             """
@@ -617,121 +615,131 @@ for line in open(sys.argv[1],'r').readlines():
             verbs=defaultdict(dict)
             sentence=[]
             sent_nr+=1
-        else:
-            assert(linenumber == prevlinenumber + 1)
 
-        sentence.append(linetoapp)
-                    
+        else:                                               #aggregate sentence tokens
+            line=line.strip().split('\t')
+            if not line==['']:
+                sentence.append(line)
+                #sentence.append([int(line[0])]+line[1:])
 
-""" output """
-print 'docid= 1'
-if not koords==[]:
-    mables+=koords  #include coordinated nps
-mables.sort()                                           #sort by sentence number and markable extension
-mables2=[]                                              #final markable list (some transformation below)
-mable_nr=0                                              #markable id counter
-                
-#some transformations in the markable feature vectors
-for m in mables:
-    m.insert(0,mable_nr)                                #insert markable ID
-    if not real_preprocessing:
-        if m[6]=='f': m[6]='FEM'
-        if m[6]=='m': m[6]='MASC'
-        if m[6]=='n': m[6]='NEUT'
-        if m[7]=='s': m[7]='SG'
-        if m[7]=='p': m[7]='PL'                        
-    m2=m[:9]
-    m2[6]=m2[6].upper()                                 #uppercase gender                
-    m2[7]=m2[7].upper()                                 #uppercase number
-    if m2[7]=='PL':
-        m2[6]='*'                                      #Plural NPs don't have gender, ignore parse output
-    m2.append(m[10])
-    m2.append(m[11])
-    m2.append(m[13])
-    m2.append(m[9])
-    m2.insert(11,m[-1])                  
-    if m[4] =='NE' and not m[7]=='PL':                  #override gender using list of first names, but not plural, e.g. conjunctions
-        for t in m[-3]:                                 #m[-3] is markable full string
-            if t in male_names and t in female_names: 
-                m2[6]='*'
-                m2[7]='SG'
-                m2[11]='PER'
-                break
-            elif t in male_names: 
-                m2[6]='MASC'
-                m2[7]='SG'
-                m2[11]='PER'               
-                break         
-            elif t in female_names:
-                m2[6]='FEM'
-                m2[7]='SG'
-                m2[11]='PER'
-                break 
-        """
-        else:
-            #TODO if there is a noun in the NP, assume gender is correct, if it is an NE only NP, leave it underspecified
-            if real_preprocessing:
-                if not (m[1],m[2]) in determiners or determiners[m[1],m[2]]=='*':
-                    m2[6]='*'                                #don't take morphology of parser, leave it underspecified for NEs
-        """                            
-    #add animacy feature here
-    if m[4] =='NE':
-        if m[2]==m[3]:  #single word token
-            if m[9] in male_names or m[9] in female_names or m[-1]=='PER': m2.insert(9,'ANIM')
+
+    """ output """
+    outlines = []
+    outlines.append('docid= 1')
+    if not koords==[]:
+        mables+=koords  #include coordinated nps
+    mables.sort()                                           #sort by sentence number and markable extension
+    mables2=[]                                              #final markable list (some transformation below)
+    mable_nr=0                                              #markable id counter
+
+    #some transformations in the markable feature vectors
+    for m in mables:
+        m.insert(0,mable_nr)                                #insert markable ID
+        if not real_preprocessing:
+            if m[6]=='f': m[6]='FEM'
+            if m[6]=='m': m[6]='MASC'
+            if m[6]=='n': m[6]='NEUT'
+            if m[7]=='s': m[7]='SG'
+            if m[7]=='p': m[7]='PL'
+        m2=m[:9]
+        m2[6]=m2[6].upper()                                 #uppercase gender
+        m2[7]=m2[7].upper()                                 #uppercase number
+        if m2[7]=='PL':
+            m2[6]='*'                                      #Plural NPs don't have gender, ignore parse output
+        m2.append(m[10])
+        m2.append(m[11])
+        m2.append(m[13])
+        m2.append(m[9])
+        m2.insert(11,m[-1])
+        if m[4] =='NE' and not m[7]=='PL':                  #override gender using list of first names, but not plural, e.g. conjunctions
+            for t in m[-3]:                                 #m[-3] is markable full string
+                if t in male_names and t in female_names:
+                    m2[6]='*'
+                    m2[7]='SG'
+                    m2[11]='PER'
+                    break
+                elif t in male_names:
+                    m2[6]='MASC'
+                    m2[7]='SG'
+                    m2[11]='PER'
+                    break
+                elif t in female_names:
+                    m2[6]='FEM'
+                    m2[7]='SG'
+                    m2[11]='PER'
+                    break
+            """
+            else:
+                #TODO if there is a noun in the NP, assume gender is correct, if it is an NE only NP, leave it underspecified
+                if real_preprocessing:
+                    if not (m[1],m[2]) in determiners or determiners[m[1],m[2]]=='*':
+                        m2[6]='*'                                #don't take morphology of parser, leave it underspecified for NEs
+            """
+        #add animacy feature here
+        if m[4] =='NE':
+            if m[2]==m[3]:  #single word token
+                if m[9] in male_names or m[9] in female_names or m[-1]=='PER': m2.insert(9,'ANIM')
+                else: m2.insert(9,'*')
+            elif m[-1]=='PER': m2.insert(9,'ANIM')  #mwt
+            else:
+                found=0
+                for tok in m[-2]:
+                    if tok[0].isupper():
+                        if tok in person or tok in male_names or tok in female_names:
+                            m2.insert(9,'ANIM')
+                            found=1
+                            m2[12]='PER'
+                            break
+                if found==0: m2.insert(9,'*')
+        elif m[4]=='NN':
+            if m[9] in person: m2.insert(9,'ANIM')
+            elif '-' in m[9]:
+                found=0
+                lex=re.search('.*-(.*)',m[9]).group(1)
+                if lex in person:
+                    m2.insert(9,'ANIM')
+                    found=1
+                if found==0: m2.insert(9,'*')
+            elif '|' in m[9]:
+                found=0
+                lex=re.search('(.*?)\|',m[9]).group(1)
+                if lex in person:
+                    m2.insert(9,'ANIM')
+                    found=1
+                if found==0: m2.insert(9,'*')
             else: m2.insert(9,'*')
-        elif m[-1]=='PER': m2.insert(9,'ANIM')  #mwt                  
-        else:
-            found=0
-            for tok in m[-2]:
-                if tok[0].isupper(): 
-                    if tok in person or tok in male_names or tok in female_names:
-                        m2.insert(9,'ANIM')
-                        found=1
-                        m2[12]='PER'
-                        break
-            if found==0: m2.insert(9,'*')
-    elif m[4]=='NN':
-        if m[9] in person: m2.insert(9,'ANIM')
-        elif '-' in m[9]: 
-            found=0
-            lex=re.search('.*-(.*)',m[9]).group(1)
-            if lex in person: 
-                m2.insert(9,'ANIM')
-                found=1
-            if found==0: m2.insert(9,'*')
-        elif '|' in m[9]: 
-            found=0
-            lex=re.search('(.*?)\|',m[9]).group(1)
-            if lex in person: 
-                m2.insert(9,'ANIM')
-                found=1
-            if found==0: m2.insert(9,'*')
         else: m2.insert(9,'*')
-    else: m2.insert(9,'*')                                          
-    mables2.append(m2)
-    mable_nr+=1
+        mables2.append(m2)
+        mable_nr+=1
 
-print 'mables=',mables2
-print 'coref=',coref        
-str_matches=str_match(mables)
-#str_matches=str_match(list(reversed(mables)))
-str_matches2=[]
-for i in str_matches: str_matches2.append([j[0] for j in i])
-print 'str_matches=',str_matches2  
-print 'pposat_heads=',pposat_heads
-print 'nominal_mods=',dict(nominal_mods)
-print 'verbs=',all_verbs
-print 'preds=',preds
-print 'haben=',haben
-print 'gmods=',gmods
-#print 'sentences=',sentences
-print 'definite=[]'
-print 'demonstrative=[]'
-print 'determiners=',determiners
-print 'prepositions=',prepositions
-print '####'          
-#sent_nr-=1                 
-
+    outlines.append('mables= ' + str(mables2))
+    outlines.append('coref= ' + str(coref))
+    str_matches=str_match(mables, nominal_mods, determiners)
+    #str_matches=str_match(list(reversed(mables)))
+    str_matches2=[]
+    for i in str_matches: str_matches2.append([j[0] for j in i])
+    outlines.append('str_matches= '+str(str_matches2))
+    outlines.append('pposat_heads= '+str(pposat_heads))
+    outlines.append('nominal_mods= '+str(dict(nominal_mods)))
+    outlines.append('verbs= '+str(all_verbs))
+    outlines.append('preds= '+str(preds))
+    outlines.append('haben= '+str(haben))
+    outlines.append('gmods= '+str(gmods))
+    #print 'sentences=',sentences
+    outlines.append('definite=[]')
+    outlines.append('demonstrative=[]')
+    outlines.append('determiners= '+str(determiners))
+    outlines.append('prepositions= '+str(prepositions))
+    outlines.append('####')
+    #sent_nr-=1
 
 
-sys.stderr.write('\n')
+
+    sys.stderr.write('\n')
+    return "\n".join(outlines) + "\n"
+
+
+if __name__ == "__main__":
+    lines = open(sys.argv[1],'r').readlines()
+    mables = get_mables(lines)
+    print(mables)
