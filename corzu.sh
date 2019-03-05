@@ -5,10 +5,13 @@ SCRIPT=$(readlink -f "$0")
 # Absolute path this script is in, thus /home/user/bin
 corzu_dir=$(dirname "$SCRIPT")
 
-parzu_cmd="parzu -q"   #the command used for starting parzu
+parzu_cmd="/home/denis/ParZu/parzu -q"   #the command used for starting parzu
 
 echo "Parsing ..."
 cat $1 |$parzu_cmd > $1".parzu" #parse
+echo "Fixing output of new ParZu"
+mv $1".parzu" $1".parzu.bad"
+python $corzu_dir/fix_parzu_output.py $1".parzu.bad" $1".parzu" 
 echo "\nDone.\nExtracting markables..."
 python $corzu_dir/extract_mables_from_parzu.py $1".parzu" > $1".mables" #markable extraction
 echo "Done.\nResolving coreference..."
@@ -18,3 +21,4 @@ python $corzu_dir/conll_to_html.py $1".coref" > $1".html"
 echo "\nDone."
 #rm $1".mables" #uncomment to delete markable file
 #rm $1".parzu" #uncomment to delete parse file
+
