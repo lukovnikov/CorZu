@@ -34,12 +34,13 @@ if __name__ == "__main__":
                         help="Port number to send requests for ParZu parser to (default:5003)")
     parser.add_argument("--host", "-H", help="Host address to listen on (default: localhost)")
     args = parser.parse_args()
+    print(args)
 
     debug=False
 
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO,
                         format='[%(asctime)s %(name)-12s %(levelname)-5s] %(message)s')
 
-    server = Server()
+    server = Server(parzuport=args.parzuport)
 
     server.app.run(port=args.port, host=args.host, debug=debug, threaded=True)
