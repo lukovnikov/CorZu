@@ -35,6 +35,7 @@ from math import ceil,log
 from itertools import combinations
 from collections import defaultdict,Counter
 from verbadicendi import vdic
+from functools import reduce
 import random
 
 # ============================================= #
