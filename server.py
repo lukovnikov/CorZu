@@ -15,7 +15,7 @@ class Server(object):
         def coref():
             text = request.args.get("text", None)
             # parse with ParZu server
-            r = req.get("http://localhost:{}/parse/".format(self.parzuport), params={"text": text})
+            r = req.get("http://0.0.0.0:{}/parse/".format(self.parzuport), params={"text": text})
             ret = re.sub("\n\n", "\n", r.text)
             #print(ret.split("\n"))
             parzulines = ret.split("\n")
